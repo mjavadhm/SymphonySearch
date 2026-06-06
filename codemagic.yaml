@@ -35,7 +35,7 @@ workflows:
           curl -F chat_id="$TELEGRAM_CHAT_ID" \
                -F document=@"$APK_PATH" \
                -F caption="🚀 Symphony Search Build Finished 🛠" \
-               https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument
+               http://172.245.152.11:8081/bot$TELEGRAM_BOT_TOKEN/sendDocument
 
     artifacts:
       - app/build/outputs/apk/debug/*.apk
