@@ -12,13 +12,16 @@ class ClapModelRunner(context: Context) {
     private val audioSession: OrtSession
     private val textSession: OrtSession
 
-    init {
-        // Load ONNX models from assets
-        val audioModelBytes = context.assets.open("clap_audio_encoder_int8.onnx").readBytes()
-        audioSession = ortEnvironment.createSession(audioModelBytes, OrtSession.SessionOptions())
+    private val modelManager = ModelManager(context)
 
-        val textModelBytes = context.assets.open("clap_text_encoder_int8.onnx").readBytes()
-        textSession = ortEnvironment.createSession(textModelBytes, OrtSession.SessionOptions())
+    init {
+        if (!modelManager.areModelsImported()) {
+            throw IllegalStateException("Models are not imported yet.")
+        }
+        
+        // Load ONNX models from internal filesDir
+        audioSession = ortEnvironment.createSession(modelManager.audioModelFile.absolutePath, OrtSession.SessionOptions())
+        textSession = ortEnvironment.createSession(modelManager.textModelFile.absolutePath, OrtSession.SessionOptions())
     }
 
     /**

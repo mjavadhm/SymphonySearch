@@ -18,9 +18,11 @@ import kotlinx.coroutines.withContext
 class SearchViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: SemanticSearchRepository
-    private val modelRunner: ClapModelRunner
     private val tokenizer: RobertaTokenizer
     private val melExtractor: MelSpectrogramExtractor
+    
+    // Lazy initialization so it doesn't crash if models aren't imported yet
+    private var modelRunner: ClapModelRunner? = null
 
     private val _searchResults = MutableStateFlow<List<TrackEmbedding>>(emptyList())
     val searchResults: StateFlow<List<TrackEmbedding>> = _searchResults
@@ -34,14 +36,18 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     init {
         val app = application as SymphonySearchApp
         repository = SemanticSearchRepository(app.boxStore)
-        modelRunner = ClapModelRunner(app)
         tokenizer = RobertaTokenizer(app)
         melExtractor = MelSpectrogramExtractor()
+    }
+    
+    fun initModelRunner() {
+        if (modelRunner == null) {
+            modelRunner = ClapModelRunner(getApplication())
+        }
     }
 
     /**
      * شبیه‌سازی پردازش و اضافه‌کردن آهنگ به دیتابیس.
-     * (در یک اپلیکیشن واقعی فایل‌های صوتی کاربر لود و به FloatArray تبدیل می‌شوند)
      */
     fun indexDummyAudio(title: String, dummyAudioData: FloatArray) {
         viewModelScope.launch {
@@ -49,11 +55,13 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             _statusMessage.value = "Indexing $title..."
             
             withContext(Dispatchers.Default) {
+                initModelRunner()
+                val runner = modelRunner ?: return@withContext
                 // ۱. استخراج Mel-Spectrogram (ابعاد ۱۰۰۱ فریم)
                 val melSpec = melExtractor.extract(dummyAudioData)
                 
                 // ۲. استخراج Embedding با مدل ONNX Audio
-                val embedding = modelRunner.getAudioEmbedding(melSpec)
+                val embedding = runner.getAudioEmbedding(melSpec)
                 
                 // ۳. ذخیره در ObjectBox
                 repository.insertTrack("fake_path/$title.mp3", title, embedding)
@@ -75,11 +83,13 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             _statusMessage.value = "Searching for '$query'..."
             
             val results = withContext(Dispatchers.Default) {
+                initModelRunner()
+                val runner = modelRunner ?: return@withContext emptyList()
                 // ۱. Tokenize کردن متن
                 val (inputIds, attentionMask) = tokenizer.encode(query)
                 
                 // ۲. استخراج Embedding متن از روی مدل ONNX Text
-                val queryEmbedding = modelRunner.getTextEmbedding(inputIds, attentionMask)
+                val queryEmbedding = runner.getTextEmbedding(inputIds, attentionMask)
                 
                 // ۳. پیدا کردن نزدیک‌ترین آهنگ‌ها با ObjectBox (HNSW)
                 repository.searchNearestTracks(queryEmbedding, maxResults = 10)
