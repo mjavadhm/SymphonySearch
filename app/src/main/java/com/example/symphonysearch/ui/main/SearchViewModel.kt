@@ -42,7 +42,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     
     fun initModelRunner() {
         if (modelRunner == null) {
-            modelRunner = ClapModelRunner(getApplication())
+            modelRunner = ClapModelRunner(getApplication<Application>())
         }
     }
 
