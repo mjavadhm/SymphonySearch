@@ -1,11 +1,16 @@
 package com.example.symphonysearch.ui.main
 
 import android.app.Application
+import android.content.Context
+import android.net.Uri
+import android.util.Log
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.symphonysearch.SymphonySearchApp
+import com.example.symphonysearch.data.SearchResult
 import com.example.symphonysearch.data.SemanticSearchRepository
-import com.example.symphonysearch.data.TrackEmbedding
+import com.example.symphonysearch.ml.AudioDecoder
 import com.example.symphonysearch.ml.ClapModelRunner
 import com.example.symphonysearch.ml.MelSpectrogramExtractor
 import com.example.symphonysearch.ml.RobertaTokenizer
@@ -21,11 +26,11 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     private val tokenizer: RobertaTokenizer
     private val melExtractor: MelSpectrogramExtractor
     
-    // Lazy initialization so it doesn't crash if models aren't imported yet
+    // Lazy initialization
     private var modelRunner: ClapModelRunner? = null
 
-    private val _searchResults = MutableStateFlow<List<TrackEmbedding>>(emptyList())
-    val searchResults: StateFlow<List<TrackEmbedding>> = _searchResults
+    private val _searchResults = MutableStateFlow<List<SearchResult>>(emptyList())
+    val searchResults: StateFlow<List<SearchResult>> = _searchResults
 
     private val _isProcessing = MutableStateFlow(false)
     val isProcessing: StateFlow<Boolean> = _isProcessing
@@ -47,33 +52,86 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
-     * شبیه‌سازی پردازش و اضافه‌کردن آهنگ به دیتابیس.
+     * Import an entire folder of audio files, split into chunks, extract embeddings, and save to DB.
      */
-    fun indexDummyAudio(title: String, dummyAudioData: FloatArray) {
+    fun indexAudioFolder(folderUri: Uri, context: Context) {
         viewModelScope.launch {
             _isProcessing.value = true
-            _statusMessage.value = "Indexing $title..."
+            _statusMessage.value = "Scanning folder..."
             
-            withContext(Dispatchers.Default) {
+            withContext(Dispatchers.IO) {
                 initModelRunner()
                 val runner = modelRunner ?: return@withContext
-                // ۱. استخراج Mel-Spectrogram (ابعاد ۱۰۰۱ فریم)
-                val melSpec = melExtractor.extract(dummyAudioData)
+                val decoder = AudioDecoder(context)
+
+                val documentFile = DocumentFile.fromTreeUri(context, folderUri)
+                if (documentFile == null || !documentFile.isDirectory) {
+                    _statusMessage.value = "Invalid folder selected."
+                    return@withContext
+                }
+
+                val audioFiles = mutableListOf<DocumentFile>()
+                findAudioFiles(documentFile, audioFiles)
+
+                if (audioFiles.isEmpty()) {
+                    _statusMessage.value = "No audio files found."
+                    return@withContext
+                }
+
+                var processedCount = 0
+                for (file in audioFiles) {
+                    val title = file.name ?: "Unknown Track"
+                    _statusMessage.value = "Processing (${processedCount + 1}/${audioFiles.size}): $title"
+
+                    try {
+                        val duration = decoder.getDurationSeconds(file.uri)
+                        val chunks = decoder.extractChunks(file.uri)
+                        
+                        if (chunks.isEmpty()) {
+                            Log.w("SearchViewModel", "No chunks extracted for $title")
+                            continue
+                        }
+
+                        val chunkEmbeddings = chunks.map { chunk ->
+                            val melSpec = melExtractor.extract(chunk.floatArray)
+                            runner.getAudioEmbedding(melSpec)
+                        }
+
+                        repository.insertTrack(
+                            filePath = file.uri.toString(),
+                            title = title,
+                            durationSeconds = duration,
+                            chunkEmbeddings = chunkEmbeddings
+                        )
+                        processedCount++
+                    } catch (e: Exception) {
+                        Log.e("SearchViewModel", "Error processing $title", e)
+                    }
+                }
                 
-                // ۲. استخراج Embedding با مدل ONNX Audio
-                val embedding = runner.getAudioEmbedding(melSpec)
-                
-                // ۳. ذخیره در ObjectBox
-                repository.insertTrack("fake_path/$title.mp3", title, embedding)
+                _statusMessage.value = "Finished indexing $processedCount tracks."
             }
             
-            _statusMessage.value = "Added $title. Total tracks: ${repository.getAllTracksCount()}"
             _isProcessing.value = false
         }
     }
 
+    private fun findAudioFiles(dir: DocumentFile, result: MutableList<DocumentFile>) {
+        val allowedExtensions = listOf("mp3", "wav", "flac", "m4a")
+        for (file in dir.listFiles()) {
+            if (file.isDirectory) {
+                findAudioFiles(file, result)
+            } else {
+                val ext = file.name?.substringAfterLast('.')?.lowercase()
+                if (ext in allowedExtensions || file.type?.startsWith("audio/") == true) {
+                    result.add(file)
+                }
+            }
+        }
+    }
+
     /**
-     * جستجوی معنایی بر اساس متن ورودی
+     * Search using text query with Hybrid Ranking (Max + Mean).
      */
     fun searchByText(query: String) {
         if (query.isBlank()) return
@@ -85,19 +143,24 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             val results = withContext(Dispatchers.Default) {
                 initModelRunner()
                 val runner = modelRunner ?: return@withContext emptyList()
-                // ۱. Tokenize کردن متن
-                val (inputIds, attentionMask) = tokenizer.encode(query)
                 
-                // ۲. استخراج Embedding متن از روی مدل ONNX Text
+                val (inputIds, attentionMask) = tokenizer.encode(query)
                 val queryEmbedding = runner.getTextEmbedding(inputIds, attentionMask)
                 
-                // ۳. پیدا کردن نزدیک‌ترین آهنگ‌ها با ObjectBox (HNSW)
-                repository.searchNearestTracks(queryEmbedding, maxResults = 10)
+                repository.searchHybrid(queryEmbedding, topN = 10)
             }
             
             _searchResults.value = results
             _statusMessage.value = "Found ${results.size} matches."
             _isProcessing.value = false
+        }
+    }
+    
+    fun clearDatabase() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.clearAll()
+            _statusMessage.value = "Database cleared."
+            _searchResults.value = emptyList()
         }
     }
 }

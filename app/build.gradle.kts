@@ -89,6 +89,9 @@ dependencies {
   implementation(libs.androidx.navigation3.runtime)
   implementation(libs.androidx.lifecycle.viewmodel.navigation3)
 
+  // File selection
+  implementation("androidx.documentfile:documentfile:1.0.1")
+
   // ONNX Runtime for local AI
   implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
 }

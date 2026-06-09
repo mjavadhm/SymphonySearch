@@ -151,9 +151,11 @@ fun SearchScreen(viewModel: SearchViewModel) {
     val isProcessing by viewModel.isProcessing.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
     
-    // Ensure model runner is initialized when we enter the search screen
-    LaunchedEffect(Unit) {
-        viewModel.initModelRunner()
+    val context = LocalContext.current
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+        uri?.let {
+            viewModel.indexAudioFolder(it, context)
+        }
     }
     
     Column(modifier = Modifier.padding(16.dp)) {
@@ -161,17 +163,23 @@ fun SearchScreen(viewModel: SearchViewModel) {
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        // بخش شبیه‌سازی وارد کردن آهنگ به دیتابیس
-        Button(
-            onClick = {
-                // شبیه‌سازی یک آرایه صوتی ۴۸ کیلواهرتز (مثلاً ۱۰ ثانیه نویز تصادفی)
-                val dummyAudio = FloatArray(48000 * 10) { Random.nextFloat() * 2 - 1 }
-                val trackName = "Random_Track_${System.currentTimeMillis() % 10000}"
-                viewModel.indexDummyAudio(trackName, dummyAudio)
-            },
-            enabled = !isProcessing
-        ) {
-            Text("Index Random Dummy Audio")
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Button(
+                onClick = { folderPicker.launch(null) },
+                enabled = !isProcessing,
+                modifier = Modifier.weight(1f).padding(end = 4.dp)
+            ) {
+                Text("Import Folder")
+            }
+            
+            Button(
+                onClick = { viewModel.clearDatabase() },
+                enabled = !isProcessing,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                modifier = Modifier.weight(1f).padding(start = 4.dp)
+            ) {
+                Text("Clear DB")
+            }
         }
         
         Spacer(modifier = Modifier.height(16.dp))
@@ -190,7 +198,7 @@ fun SearchScreen(viewModel: SearchViewModel) {
             enabled = !isProcessing && query.isNotBlank(),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Semantic Search")
+            Text("Semantic Search (Hybrid)")
         }
         
         Spacer(modifier = Modifier.height(16.dp))
@@ -200,15 +208,24 @@ fun SearchScreen(viewModel: SearchViewModel) {
         Spacer(modifier = Modifier.height(16.dp))
         
         LazyColumn {
-            items(searchResults) { track ->
+            items(searchResults) { result ->
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 4.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text(text = track.title ?: "Unknown", style = MaterialTheme.typography.titleMedium)
-                        Text(text = track.filePath ?: "", style = MaterialTheme.typography.bodySmall)
+                        Text(text = result.track.title ?: "Unknown", style = MaterialTheme.typography.titleMedium)
+                        
+                        Spacer(modifier = Modifier.height(4.dp))
+                        
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(text = "Hybrid: ${String.format("%.4f", result.hybridScore)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                            Text(text = "Max: ${String.format("%.4f", result.maxScore)}", style = MaterialTheme.typography.bodySmall)
+                            Text(text = "Mean: ${String.format("%.4f", result.meanScore)}", style = MaterialTheme.typography.bodySmall)
+                        }
+                        
+                        Text(text = "Duration: ${result.track.durationSeconds}s", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
