@@ -1,5 +1,5 @@
 buildscript {
-    val objectboxVersion = "4.0.0"
+    val objectboxVersion = "5.4.1"
     repositories {
         mavenCentral()
     }
@@ -13,5 +13,5 @@ plugins {
   alias(libs.plugins.android.application) apply false
   alias(libs.plugins.compose.compiler) apply false
   alias(libs.plugins.kotlin.serialization) apply false
-  alias(libs.plugins.kotlin.android) apply false
+
 }
