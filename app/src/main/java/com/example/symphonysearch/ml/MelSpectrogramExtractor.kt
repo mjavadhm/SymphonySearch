@@ -176,12 +176,12 @@ class MelSpectrogramExtractor {
     }
 
     /**
-     * تبدیل به مقیاس لگاریتمی: log10(max(value, 1e-10))
+     * تبدیل به مقیاس لگاریتمی (power_to_db): 10 * log10(max(value, 1e-10))
      */
     private fun logScale(melSpec: Array<FloatArray>): Array<FloatArray> {
         return Array(melSpec.size) { t ->
             FloatArray(nMels) { m ->
-                log10(maxOf(melSpec[t][m], 1e-10f))
+                10f * log10(maxOf(melSpec[t][m], 1e-10f))
             }
         }
     }

@@ -155,6 +155,60 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             _isProcessing.value = false
         }
     }
+
+    /**
+     * Search using an audio file as the query.
+     */
+    fun searchByAudio(uri: Uri, context: Context) {
+        viewModelScope.launch {
+            _isProcessing.value = true
+            _statusMessage.value = "Extracting audio features..."
+            
+            val results = withContext(Dispatchers.Default) {
+                initModelRunner()
+                val runner = modelRunner ?: return@withContext emptyList()
+                val decoder = AudioDecoder(context)
+                
+                // Get just the first chunk for query
+                val chunks = decoder.extractChunks(uri)
+                if (chunks.isEmpty()) {
+                    return@withContext emptyList()
+                }
+                
+                // Average the chunks if there are multiple, or just use the first one
+                // To keep it simple and fast for querying, we'll use the mean embedding of the query song
+                val chunkEmbeddings = chunks.map { chunk ->
+                    val melSpec = melExtractor.extract(chunk.floatArray)
+                    runner.getAudioEmbedding(melSpec)
+                }
+                
+                val meanEmb = FloatArray(512)
+                for (emb in chunkEmbeddings) {
+                    for (i in 0 until 512) {
+                        meanEmb[i] += emb[i]
+                    }
+                }
+                var norm = 0f
+                for (i in 0 until 512) {
+                    meanEmb[i] /= chunkEmbeddings.size.toFloat()
+                    norm += meanEmb[i] * meanEmb[i]
+                }
+                norm = kotlin.math.sqrt(norm)
+                if (norm > 0f) {
+                    for (i in 0 until 512) {
+                        meanEmb[i] /= norm
+                    }
+                }
+                
+                _statusMessage.value = "Searching for similar audio..."
+                repository.searchHybrid(meanEmb, topN = 10)
+            }
+            
+            _searchResults.value = results
+            _statusMessage.value = "Found ${results.size} matches."
+            _isProcessing.value = false
+        }
+    }
     
     fun clearDatabase() {
         viewModelScope.launch(Dispatchers.IO) {

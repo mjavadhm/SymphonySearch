@@ -193,12 +193,29 @@ fun SearchScreen(viewModel: SearchViewModel) {
         
         Spacer(modifier = Modifier.height(8.dp))
         
-        Button(
-            onClick = { viewModel.searchByText(query) },
-            enabled = !isProcessing && query.isNotBlank(),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Semantic Search (Hybrid)")
+        val audioFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            uri?.let {
+                viewModel.searchByAudio(it, context)
+            }
+        }
+        
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Button(
+                onClick = { viewModel.searchByText(query) },
+                enabled = !isProcessing && query.isNotBlank(),
+                modifier = Modifier.weight(1f).padding(end = 4.dp)
+            ) {
+                Text("Search by Text")
+            }
+            
+            Button(
+                onClick = { audioFilePicker.launch(arrayOf("audio/*")) },
+                enabled = !isProcessing,
+                modifier = Modifier.weight(1f).padding(start = 4.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+            ) {
+                Text("Search by Audio")
+            }
         }
         
         Spacer(modifier = Modifier.height(16.dp))
