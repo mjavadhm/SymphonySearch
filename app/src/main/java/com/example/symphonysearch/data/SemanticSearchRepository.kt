@@ -29,8 +29,9 @@ class SemanticSearchRepository(boxStore: BoxStore) {
         // از آنجایی که بردارهای ما نرمالایز شده هستند، الگوریتم پیش‌فرض
         // Euclidean در نزدیک‌ترین همسایه‌ها تقریباً معادل Cosine Similarity عمل می‌کند.
         // ObjectBox از HNSW برای اجرای بسیار سریع جستجوی نزدیک‌ترین بردار استفاده می‌کند.
-        return trackBox.query()
-            .nearest(TrackEmbedding_.embedding, queryEmbedding, maxResults.toInt())
+        return trackBox.query(
+                TrackEmbedding_.embedding.nearestNeighbors(queryEmbedding, maxResults.toInt())
+            )
             .build()
             .find()
     }
