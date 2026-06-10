@@ -69,7 +69,9 @@ class RobertaTokenizer(context: Context) {
      * - طول ثابت = maxLength (77)
      * - قالب: [<s>, ...tokens..., </s>, <pad>, <pad>, ...]
      */
-    fun encode(text: String): Pair<LongArray, LongArray> {
+    fun encode(rawText: String): Pair<LongArray, LongArray> {
+        // RoBERTa expects the first word to have a leading space to map to the 'Ġ' (whole word) token.
+        val text = if (rawText.startsWith(" ")) rawText else " $rawText"
         val tokens = tokenize(text)
 
         // تبدیل توکن‌ها به ID + اضافه کردن توکن‌های ویژه
