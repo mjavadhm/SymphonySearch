@@ -116,6 +116,55 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /**
+     * Import pre-computed embeddings from a JSON file.
+     */
+    fun importJsonDatabase(jsonUri: Uri, context: Context) {
+        viewModelScope.launch {
+            _isProcessing.value = true
+            _statusMessage.value = "Reading JSON database..."
+            
+            withContext(Dispatchers.IO) {
+                try {
+                    val inputStream = context.contentResolver.openInputStream(jsonUri)
+                    if (inputStream == null) {
+                        _statusMessage.value = "Failed to open file."
+                        return@withContext
+                    }
+                    
+                    val jsonString = inputStream.bufferedReader().use { it.readText() }
+                    _statusMessage.value = "Parsing JSON..."
+                    
+                    val jsonFormat = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                    val tracks = jsonFormat.decodeFromString<List<com.example.symphonysearch.data.TrackJson>>(jsonString)
+                    
+                    _statusMessage.value = "Saving to ObjectBox..."
+                    var saved = 0
+                    for (track in tracks) {
+                        val floatArrayChunks = track.chunks.map { it.toFloatArray() }
+                        repository.insertTrack(
+                            filePath = track.filename,
+                            title = track.title,
+                            durationSeconds = track.duration,
+                            chunkEmbeddings = floatArrayChunks
+                        )
+                        saved++
+                        if (saved % 100 == 0) {
+                            _statusMessage.value = "Saved $saved / ${tracks.size} tracks..."
+                        }
+                    }
+                    
+                    _statusMessage.value = "Successfully imported $saved tracks!"
+                } catch (e: Exception) {
+                    Log.e("SearchViewModel", "JSON import error", e)
+                    _statusMessage.value = "Error importing JSON: ${e.message}"
+                }
+            }
+            
+            _isProcessing.value = false
+        }
+    }
+
     private fun findAudioFiles(dir: DocumentFile, result: MutableList<DocumentFile>) {
         val allowedExtensions = listOf("mp3", "wav", "flac", "m4a")
         for (file in dir.listFiles()) {

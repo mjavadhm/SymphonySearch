@@ -158,6 +158,12 @@ fun SearchScreen(viewModel: SearchViewModel) {
         }
     }
     
+    val jsonPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri?.let {
+            viewModel.importJsonDatabase(it, context)
+        }
+    }
+    
     Column(modifier = Modifier.padding(16.dp)) {
         Text(text = "Symphony AI Core", style = MaterialTheme.typography.headlineMedium)
         
@@ -169,7 +175,16 @@ fun SearchScreen(viewModel: SearchViewModel) {
                 enabled = !isProcessing,
                 modifier = Modifier.weight(1f).padding(end = 4.dp)
             ) {
-                Text("Import Folder")
+                Text("Folder")
+            }
+            
+            Button(
+                onClick = { jsonPicker.launch(arrayOf("application/json")) },
+                enabled = !isProcessing,
+                modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+            ) {
+                Text("Import JSON")
             }
             
             Button(
@@ -178,7 +193,7 @@ fun SearchScreen(viewModel: SearchViewModel) {
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                 modifier = Modifier.weight(1f).padding(start = 4.dp)
             ) {
-                Text("Clear DB")
+                Text("Clear")
             }
         }
         

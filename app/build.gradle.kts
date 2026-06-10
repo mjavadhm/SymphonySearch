@@ -94,4 +94,7 @@ dependencies {
 
   // ONNX Runtime for local AI
   implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
+  
+  // JSON Parsing
+  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 }
